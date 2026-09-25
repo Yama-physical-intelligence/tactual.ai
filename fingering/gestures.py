@@ -5,7 +5,8 @@ Pure logic with no camera or OS dependencies, so it can be unit-tested and repla
 Gestures (primary hand). The cursor sits where thumb and index tips meet.
   point / hover                    -> move cursor
   tap thumb+index                  -> left click; tap twice -> double-click
-  pinch thumb+index and move       -> scroll (content follows the hand, both axes)
+  pinch thumb+index and move       -> scroll (content follows the hand, both axes; flick for momentum)
+  pinch thumb+index and twist      -> dial scroll (clockwise = down)
   tap, then pinch again and move   -> drag, release to drop (like a trackpad tap-drag)
   pinch thumb+middle               -> right click
   open palm swipe L/R/U/D          -> switch Space / Mission Control / App windows
@@ -19,7 +20,7 @@ from collections import deque
 from .actions import Action, Click, MouseButton, MoveCursor, Notice, Scroll, Shortcut
 from .config import Settings
 from .filters import OneEuroFilter
-from .hand import INDEX_MCP, INDEX_TIP, MIDDLE_TIP, THUMB_TIP, WRIST, Hand, Pose
+from .hand import INDEX_MCP, INDEX_TIP, MIDDLE_MCP, MIDDLE_TIP, THUMB_TIP, WRIST, Hand, Pose
 from .mapping import Calibrator, ScreenMapper
 from .profile import GestureCalibrator, apply_profile, compute_profile, save_profile
 
@@ -54,6 +55,12 @@ class GestureEngine:
         self._pos: tuple[float, float] | None = None  # filtered screen position of the anchor
         self._raw_pos: tuple[float, float] | None = None  # unfiltered (no lag), for movement tests
         self._scroll_acc = (0.0, 0.0)
+        self._scroll_hist: deque = deque()  # (t, dx, dy) for fling velocity
+        self._momentum: tuple[float, float] | None = None  # px/s
+        self._momentum_t = 0.0
+        self._pinch_angle = 0.0
+        self._dial_ref = 0.0
+        self._aim_hist: deque = deque()  # (t, pos, index_ratio, middle_ratio) for click rewind
         self._dragging = False
         self._need_release = False  # swallow a pinch that was interrupted (zoom/pause/lost hand)
         self._scroll_ref: tuple[float, float] | None = None
@@ -83,8 +90,8 @@ class GestureEngine:
             return "zoom"
         if self._dragging:
             return "drag"
-        if self._pinch_mode == "scroll":
-            return "scroll"
+        if self._pinch_mode in ("scroll", "dial"):
+            return self._pinch_mode
         if self._pinch:
             return f"pinch-{self._pinch}"
         return self.pose.value
@@ -132,9 +139,10 @@ class GestureEngine:
         out += self._update_fist(pose, t)
         if not self.enabled or pose is Pose.FIST:
             return out
+        out += self._momentum_step(t)
         if pose is Pose.POINTER:
             self._track(hand, t)
-        out += self._pinch_actions(edge, t)
+        out += self._pinch_actions(edge, t, hand)
         if pose is Pose.POINTER:
             out += self._move(t)
         out += self._swipe(hand, pose, t)
@@ -220,24 +228,30 @@ class GestureEngine:
             return ("end", kind)
         return None
 
-    def _pinch_actions(self, edge, t: float) -> list[Action]:
+    def _pinch_actions(self, edge, t: float, hand: Hand) -> list[Action]:
         if edge is None:
-            return self._pinch_held(t) if self._pinch == "left" else []
+            return self._pinch_held(t, hand) if self._pinch == "left" else []
         phase, kind = edge
+        if phase == "start":
+            self._momentum = None
         if kind == "right":
             if phase == "start":
                 self._pinch_t0 = t
-                return [Click("right"), self._event("right click")]
+                return self._rewind(t, 3) + [Click("right"), self._event("right click")]
             return []
         if phase == "start":
             self._pinch_t0, self._pinch_mode, self._pinch_origin = t, "pending", self._raw_pos
             self._pinch_is_second = t - self._last_tap_t < self.s.double_click_s
-            return []
+            self._pinch_angle = _hand_angle(hand)
+            return self._rewind(t, 2)
         mode, self._pinch_mode = self._pinch_mode, None
         if mode == "drag":
             self._dragging = False
             return [MouseButton("left", False), self._event("drop")]
-        if mode != "pending":  # scroll finished, or a long still hold: no click
+        if mode in ("scroll", "dial"):
+            self._start_momentum(t)
+            return []
+        if mode != "pending":  # a long still hold: no click
             return []
         if self._pinch_is_second:
             self._last_tap_t = -math.inf
@@ -245,15 +259,38 @@ class GestureEngine:
         self._last_tap_t = t
         return [Click("left", 1), self._event("click")]
 
-    def _pinch_held(self, t: float) -> list[Action]:
+    def _rewind(self, t: float, ratio_idx: int) -> list[Action]:
+        """Put the cursor back where it was just before the fingers started closing."""
+        exit_thr = self.s.pinch_exit if ratio_idx == 2 else self.s.pinch_exit_middle
+        for ht, pos, *ratios in reversed(self._aim_hist):
+            if t - ht > self.s.click_rewind_s:
+                break
+            if ratios[ratio_idx - 2] > exit_thr:  # fingers were still clearly open here
+                if self.cursor and math.dist(pos, self.cursor) >= self.s.move_deadzone_px:
+                    self.cursor = pos
+                    return [MoveCursor(*pos)]
+                return []
+        return []
+
+    def _pinch_held(self, t: float, hand: Hand) -> list[Action]:
         raw, origin = self._raw_pos, self._pinch_origin
         if raw is None or origin is None:
             return []
         if self._pinch_mode == "scroll":
-            return self._scroll_step(self._pos)
+            return self._scroll_step(self._pos, t)
+        if self._pinch_mode == "dial":
+            return self._dial_step(hand, t)
         if self._pinch_mode not in ("pending", "hold"):
             return []
-        if math.hypot(raw[0] - origin[0], raw[1] - origin[1]) < self.s.pinch_move_px:
+        # Whichever crosses its threshold first (relative to it) decides: twist = dial, move = scroll/drag.
+        twist = abs(_angle_delta(_hand_angle(hand), self._pinch_angle)) / self.s.dial_start_deg
+        shift = math.hypot(raw[0] - origin[0], raw[1] - origin[1]) / self.s.pinch_move_px
+        moved = shift >= 1.0 and shift >= twist
+        if twist >= 1.0 and twist > shift and not self._pinch_is_second:
+            self._pinch_mode, self._dial_ref, self._scroll_acc = "dial", _hand_angle(hand), (0.0, 0.0)
+            self._scroll_hist.clear()
+            return [self._event("dial scroll")]
+        if not moved:
             if self._pinch_mode == "pending" and t - self._pinch_t0 > self.s.tap_max_s:
                 self._pinch_mode = "hold"  # too long for a tap; still becomes scroll/drag if moved
             return []
@@ -261,16 +298,49 @@ class GestureEngine:
             self._pinch_mode, self._dragging = "drag", True
             return [MouseButton("left", True), self._event("drag")]
         self._pinch_mode, self._scroll_ref, self._scroll_acc = "scroll", self._pos, (0.0, 0.0)
+        self._scroll_hist.clear()
         return [self._event("scroll")]
 
-    def _scroll_step(self, pos: tuple[float, float]) -> list[Action]:
-        k = self.s.scroll_gain * (1 if self.s.natural_scroll else -1)
-        ax = self._scroll_acc[0] + (pos[0] - self._scroll_ref[0]) * k
-        ay = self._scroll_acc[1] + (pos[1] - self._scroll_ref[1]) * k
-        self._scroll_ref = pos
+    def _emit_scroll(self, fx: float, fy: float, t: float) -> list[Action]:
+        ax, ay = self._scroll_acc[0] + fx, self._scroll_acc[1] + fy
         dx, dy = int(ax), int(ay)
         self._scroll_acc = (ax - dx, ay - dy)
+        self._scroll_hist.append((t, fx, fy))
+        while self._scroll_hist and t - self._scroll_hist[0][0] > 0.12:
+            self._scroll_hist.popleft()
         return [Scroll(dy, dx)] if dx or dy else []
+
+    def _scroll_step(self, pos: tuple[float, float], t: float) -> list[Action]:
+        k = self.s.scroll_gain * (1 if self.s.natural_scroll else -1)
+        fx, fy = (pos[0] - self._scroll_ref[0]) * k, (pos[1] - self._scroll_ref[1]) * k
+        self._scroll_ref = pos
+        return self._emit_scroll(fx, fy, t)
+
+    def _dial_step(self, hand: Hand, t: float) -> list[Action]:
+        angle = _hand_angle(hand)
+        delta = _angle_delta(angle, self._dial_ref)
+        self._dial_ref = angle
+        return self._emit_scroll(0.0, -delta * self.s.dial_gain, t)  # clockwise -> scroll down
+
+    def _start_momentum(self, t: float) -> None:
+        hist = self._scroll_hist
+        if len(hist) < 2 or t - hist[-1][0] > 0.1:
+            return
+        span = max(hist[-1][0] - hist[0][0], 1 / 60)
+        vx, vy = sum(h[1] for h in hist) / span, sum(h[2] for h in hist) / span
+        if math.hypot(vx, vy) >= self.s.momentum_min_speed:
+            self._momentum, self._momentum_t = (vx, vy), t
+            self._scroll_acc = (0.0, 0.0)
+
+    def _momentum_step(self, t: float) -> list[Action]:
+        if self._momentum is None:
+            return []
+        dt = t - self._momentum_t
+        self._momentum_t = t
+        decay = math.exp(-dt / self.s.momentum_decay_s)
+        vx, vy = self._momentum[0] * decay, self._momentum[1] * decay
+        self._momentum = (vx, vy) if math.hypot(vx, vy) > 40 else None
+        return self._emit_scroll(vx * dt, vy * dt, t)
 
     # -------------------------------------------------------------------- pose
 
@@ -303,6 +373,11 @@ class GestureEngine:
     def _track(self, hand: Hand, t: float) -> None:
         sx, sy = self._raw_pos = self.mapper.map(*self._anchor_point(hand))
         self._pos = (self._fx(sx, t), self._fy(sy, t))
+        cursor = self._pos if not self._pinch else self.cursor
+        if cursor:
+            self._aim_hist.append((t, cursor, hand.pinch_ratio(INDEX_TIP), hand.pinch_ratio(MIDDLE_TIP)))
+        while self._aim_hist and t - self._aim_hist[0][0] > 0.5:
+            self._aim_hist.popleft()
 
     def _move(self, t: float) -> list[Action]:
         # Steady click: hold the cursor still while left-pinched (unless dragging), and only
@@ -330,9 +405,9 @@ class GestureEngine:
         _, x1, y1 = self._swipe_hist[-1]
         dx, dy = x1 - x0, y1 - y0
         name = None
-        if abs(dx) >= self.s.swipe_min_dist and abs(dx) > 1.5 * abs(dy):
+        if abs(dx) >= self.s.swipe_min_dist and abs(dx) > self.s.swipe_axis_ratio * abs(dy):
             name = "space_right" if (dx < 0) == self.s.natural_swipe else "space_left"
-        elif abs(dy) >= self.s.swipe_min_dist and abs(dy) > 1.5 * abs(dx):
+        elif abs(dy) >= self.s.swipe_min_dist and abs(dy) > self.s.swipe_axis_ratio * abs(dx):
             name = "mission_control" if dy < 0 else "app_windows"
         if not name:
             return []
@@ -424,3 +499,13 @@ class GestureEngine:
             self.then_calibrate_screen = False
             out += self.start_calibration()
         return out
+
+
+def _hand_angle(hand: Hand) -> float:
+    """In-image roll of the hand (degrees): direction from wrist to middle knuckle."""
+    (wx, wy), (mx, my) = hand.point(WRIST), hand.point(MIDDLE_MCP)
+    return math.degrees(math.atan2(my - wy, (mx - wx) * hand.aspect))
+
+
+def _angle_delta(a: float, b: float) -> float:
+    return (a - b + 180.0) % 360.0 - 180.0

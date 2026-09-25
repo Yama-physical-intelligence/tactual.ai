@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 
@@ -10,8 +12,10 @@ from fingering.mapping import ScreenMapper
 DT = 1 / 30
 
 
-def make_hand(cx=0.5, cy=0.5, fingers=(False, True, False, False, False), pinch=None, handedness="Right"):
-    """Synthetic upright hand. fingers = extended (thumb, index, middle, ring, pinky); pinch = 'index'|'middle'."""
+def make_hand(cx=0.5, cy=0.5, fingers=(False, True, False, False, False), pinch=None, handedness="Right",
+              gap=None, angle=0.0):
+    """Synthetic upright hand. fingers = extended (thumb, index, middle, ring, pinky); pinch = 'index'|'middle'.
+    gap: thumb tip this far right of the index tip (a half-closed pinch). angle: roll in degrees."""
     lm = np.zeros((21, 2))
     lm[0] = (cx, cy + 0.15)  # wrist
     for f, dx in enumerate((-0.03, 0.0, 0.03, 0.06)):
@@ -27,6 +31,13 @@ def make_hand(cx=0.5, cy=0.5, fingers=(False, True, False, False, False), pinch=
     lm[4] = (cx - 0.13, cy + 0.02) if fingers[0] else (cx - 0.01, cy + 0.05)
     if pinch:
         lm[THUMB_TIP] = lm[INDEX_TIP if pinch == "index" else MIDDLE_TIP] + 0.005
+    if gap is not None:
+        lm[THUMB_TIP] = lm[INDEX_TIP] + (gap, 0.0)
+    if angle:
+        r = np.radians(angle)
+        rot = np.array([[np.cos(r), -np.sin(r)], [np.sin(r), np.cos(r)]])
+        pivot = lm[INDEX_TIP].copy()  # twisting a pinch turns the hand around the pinch point
+        lm = (lm - pivot) @ rot.T + pivot
     return Hand(lm, handedness, aspect=1.0)
 
 
@@ -260,3 +271,37 @@ def test_gesture_calibration_waits_for_real_pinch(engine):
     run(engine, c, 70)
     run(engine, c, 200)  # never actually pinches: setup keeps waiting instead of saving junk
     assert engine.gesture_calibrator is not None and engine.gesture_calibrator.step == 2
+
+
+def test_click_rewinds_to_aim_before_fingers_closed(engine):
+    c = Clock()
+    run(engine, c, 20, cx=0.5)  # settle aim
+    aim = engine.cursor
+    run(engine, c, 2, cx=0.5, gap=0.057)  # fingers half-closed: pinch point drifts
+    out = run(engine, c, 2, cx=0.5, pinch="index")
+    out += run(engine, c, 1, cx=0.5)
+    assert Click("left", 1) in out
+    moves = [a for a in out if isinstance(a, MoveCursor)]
+    assert moves and math.dist((moves[0].x, moves[0].y), aim) < 3
+
+
+def test_twist_while_pinched_dial_scrolls(engine):
+    c = Clock()
+    run(engine, c, 5)
+    out = []
+    for deg in range(0, 60, 4):
+        out += engine.update([make_hand(pinch="index", angle=deg)], c())
+    scrolls = [a for a in out if isinstance(a, Scroll)]
+    assert engine.mode == "dial"
+    assert scrolls and sum(sc.dy for sc in scrolls) < 0  # clockwise -> scroll down
+    assert not any(isinstance(a, Click) for a in out + run(engine, c, 2))
+
+
+def test_fast_scroll_release_has_momentum(engine):
+    c = Clock()
+    run(engine, c, 5)
+    for i in range(8):
+        engine.update([make_hand(pinch="index", cy=0.4 + 0.03 * i)], c())
+    run(engine, c, 1, cy=0.64)  # release
+    after = run(engine, c, 10, cy=0.64)
+    assert any(isinstance(a, Scroll) and a.dy > 0 for a in after)

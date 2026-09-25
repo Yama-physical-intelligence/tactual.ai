@@ -32,22 +32,32 @@ class Settings:
     # A finger counts as extended when wrist->tip / wrist->pip exceeds this (index, middle, ring, pinky).
     extend_thresholds: tuple = (1.15, 1.15, 1.15, 1.15)
     tap_max_s: float = 0.35  # pinch shorter than this (without moving) is a tap = click
-    pinch_move_px: float = 30.0  # pinch-and-move beyond this = scroll (or drag after a tap)
+    pinch_move_px: float = 20.0  # pinch-and-move beyond this = scroll (or drag after a tap)
+    # Click rewind: a click lands where the aim point was just before the fingers started closing
+    # (closing a pinch drags the aim point a little). Looks back at most this far.
+    click_rewind_s: float = 0.25
     double_click_s: float = 0.45
     pose_stable_frames: int = 3
 
     # Pinch-and-move scroll: content follows the hand like grabbing a page.
     scroll_gain: float = 1.0  # scroll pixels per pixel of (mapped) hand movement
     natural_scroll: bool = True
+    # Dial scroll: while pinched, twist the hand like a knob (clockwise = down).
+    dial_start_deg: float = 14.0
+    dial_gain: float = 14.0  # scroll pixels per degree
+    # Momentum after releasing a fast scroll, like a trackpad fling.
+    momentum_min_speed: float = 600.0  # px/s needed to fling
+    momentum_decay_s: float = 0.35
 
     # Swipe (open palm)
-    swipe_window_s: float = 0.30
-    swipe_min_dist: float = 0.16  # fraction of frame
+    swipe_window_s: float = 0.35
+    swipe_min_dist: float = 0.12  # fraction of frame
+    swipe_axis_ratio: float = 1.3  # main-axis travel must dominate the other axis by this much
     swipe_cooldown_s: float = 0.9
     natural_swipe: bool = True
 
     # Two-hand zoom
-    zoom_step: float = 1.25
+    zoom_step: float = 1.15
     zoom_stable_frames: int = 4
 
     # Pause toggle (fist hold) and hand-lost handling
