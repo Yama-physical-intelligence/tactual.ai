@@ -1,6 +1,7 @@
 """macOS actuator: posts native Quartz events (sub-millisecond, real click state, drag events)."""
 
 import logging
+import time
 
 import Quartz as Q
 
@@ -46,6 +47,9 @@ class MacController:
         loc = Q.CGEventGetLocation(Q.CGEventCreate(None))
         self._pos = (loc.x, loc.y)
         self._left_down = False
+        self.smart_scroll = True
+        self._scroll_at: tuple[float, float] | None = None
+        self._last_scroll_t = 0.0
 
     def execute(self, action: Action) -> None:
         if isinstance(action, Notice):
@@ -70,9 +74,22 @@ class MacController:
                 self._left_down = action.down
         elif isinstance(action, Scroll):
             ev = Q.CGEventCreateScrollWheelEvent(None, Q.kCGScrollEventUnitPixel, 2, action.dy, action.dx)
+            Q.CGEventSetLocation(ev, self._scroll_location())
             Q.CGEventPost(Q.kCGHIDEventTap, ev)
         elif isinstance(action, Shortcut):
             self._key(*SHORTCUTS[action.name])
+
+    def _scroll_location(self) -> tuple[float, float]:
+        """Resolve once per scroll gesture: the pinch point, or the nearest scrollable area if the
+        pinch point isn't over one (so scrolling works anywhere in a window)."""
+        now = time.monotonic()
+        if self._scroll_at is None or now - self._last_scroll_t > 0.4:
+            self._scroll_at = self._pos
+            if self.smart_scroll:
+                from .ax import scroll_target
+                self._scroll_at = scroll_target(*self._pos)
+        self._last_scroll_t = now
+        return self._scroll_at
 
     def _mouse(self, kind, button, click_state: int = 1) -> None:
         ev = Q.CGEventCreateMouseEvent(None, kind, self._pos, button)
