@@ -23,7 +23,7 @@ def parse_args(argv):
     p = argparse.ArgumentParser(description="Control your Mac with hand gestures.")
     p.add_argument("--camera", type=int, default=0, help="camera index (default 0)")
     p.add_argument("--dry-run", action="store_true", help="recognize gestures but don't move the mouse")
-    p.add_argument("--calibrate", action="store_true", help="start with 4-corner screen calibration")
+    p.add_argument("--calibrate", action="store_true", help="start with screen setup (sweep your hand over the area to use)")
     p.add_argument("--setup", action="store_true", help="run gesture + screen calibration (auto on first run)")
     p.add_argument("--hand", choices=["Right", "Left"], default="Right", help="primary control hand")
     p.add_argument("--no-overlay", action="store_true", help="hide the on-screen hand imprint")
@@ -116,9 +116,8 @@ def main(argv=None) -> int:
             fps = 0.9 * fps + 0.1 / max(now - last, 1e-6)
             last = now
             if overlay:
-                gc = engine.gesture_calibrator
                 overlay.update(overlay_points(engine), overlay_state(engine), engine.prompt,
-                               gc.progress if gc else 0.0, engine.anchor and engine.cursor)
+                               engine.setup_progress, engine.anchor and engine.cursor)
             if args.no_preview:
                 continue
             draw(frame, engine, hands, fps, infer_ms)

@@ -111,13 +111,27 @@ def compute_profile(samples: dict[str, list[dict]]) -> dict:
             raise ValueError("fist and open hand looked too similar, try again")
         ext.append(round((closed + opened) / 2, 3))
 
+    def pinch_thresholds(opened, pinched, max_enter, max_exit):
+        # Close to the measured pinch, not halfway to open: a relaxed hand must never read as pinched.
+        enter = min(max(pinched + 0.15 * (opened - pinched), 0.2), max_enter)
+        exit_ = min(max(pinched + 0.30 * (opened - pinched), enter + 0.1), max_exit)
+        return round(enter, 3), round(exit_, 3)
+
+    enter_i, exit_i = pinch_thresholds(open_i, pinched_i, 0.40, 0.55)
+    enter_m, exit_m = pinch_thresholds(open_m, pinched_m, 0.50, 0.65)
     return {
-        "pinch_enter": round(pinched_i + 0.35 * (open_i - pinched_i), 3),
-        "pinch_exit": round(pinched_i + 0.6 * (open_i - pinched_i), 3),
-        "pinch_enter_middle": round(pinched_m + 0.35 * (open_m - pinched_m), 3),
-        "pinch_exit_middle": round(pinched_m + 0.6 * (open_m - pinched_m), 3),
+        "pinch_enter": enter_i,
+        "pinch_exit": exit_i,
+        "pinch_enter_middle": enter_m,
+        "pinch_exit_middle": exit_m,
         "pinch_min_reach": round(min_reach, 3),
         "extend_thresholds": ext,
+        # raw medians, kept so thresholds can be recomputed or debugged later
+        "measured": {
+            "open_index": round(open_i, 3), "pinched_index": round(pinched_i, 3),
+            "open_middle": round(open_m, 3), "pinched_middle": round(pinched_m, 3),
+            "pinch_reach": round(pinch_reach, 3), "fist_reach": round(fist_reach, 3),
+        },
     }
 
 

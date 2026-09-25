@@ -183,18 +183,54 @@ def test_hand_lost_releases_drag(engine):
     assert MouseButton("left", False) in out
 
 
-def test_calibration_maps_corners(engine):
+def test_screen_setup_maps_swept_area(engine):
     c = Clock()
     engine.start_calibration()
-    corners = [(0.3, 0.3), (0.7, 0.3), (0.7, 0.6), (0.3, 0.6)]
-    for x, y in corners:
-        # pinched synthetic hand: pinch point = index tip + 0.0025 = (cx - 0.0275, cy - 0.1175)
-        run(engine, c, 5, cx=x + 0.0275, cy=y + 0.1175)
-        run(engine, c, 2, cx=x + 0.0275, cy=y + 0.1175, pinch="index")
+    # sweep the (unpinched) aim point around a 0.3..0.7 x 0.3..0.6 rectangle; aim = (cx - 0.005, cy - 0.035)
+    path = [(0.3 + 0.4 * k / 20, 0.3) for k in range(21)] + [(0.7, 0.3 + 0.3 * k / 20) for k in range(21)]
+    path += [(0.7 - 0.4 * k / 20, 0.6) for k in range(21)] + [(0.3, 0.6 - 0.3 * k / 20) for k in range(21)]
+    for k in range(200):
+        x, y = path[k % len(path)]
+        engine.update([make_hand(cx=x + 0.005, cy=y + 0.035)], c())
     assert engine.calibrator is None
-    assert engine.mapper.map(0.3, 0.3) == pytest.approx((0, 0), abs=2)
-    assert engine.mapper.map(0.7, 0.6) == pytest.approx((999, 799), abs=2)
-    assert (engine.s.calibration_path).exists()
+    assert engine.s.calibration_path.exists()
+    (x0, y0), _, (x1, y1), _ = engine.mapper.corners
+    assert x0 == pytest.approx(0.3, abs=0.03) and x1 == pytest.approx(0.7, abs=0.03)
+    assert y0 == pytest.approx(0.3, abs=0.03) and y1 == pytest.approx(0.6, abs=0.03)
+
+
+def test_screen_setup_enforces_minimum_area(engine):
+    c = Clock()
+    engine.start_calibration()
+    for _ in range(200):  # hand barely moves
+        engine.update([make_hand()], c())
+    (x0, y0), _, (x1, y1), _ = engine.mapper.corners
+    assert x1 - x0 >= 0.2 - 1e-9 and y1 - y0 >= 0.15 - 1e-9
+
+
+def test_lingering_right_pinch_does_not_freeze_cursor(engine):
+    c = Clock()
+    run(engine, c, 5)
+    out = []
+    for i in range(30):
+        out += engine.update([make_hand(fingers=TWO, pinch="middle", cx=0.4 + 0.01 * i)], c())
+    assert Click("right") in out
+    assert any(isinstance(a, MoveCursor) for a in out)
+
+
+def test_profile_thresholds_are_clamped():
+    from fingering.profile import compute_profile
+    def sample(ri, rm, ext, reach=1.6):
+        return {"ri": ri, "rm": rm, "reach_i": reach, "reach_m": reach, "ext": (ext,) * 4}
+    samples = {  # loose measurements like a real failed run: sloppy middle pinch, big open hand
+        "palm": [sample(1.15, 1.56, 1.13)] * 5, "point": [sample(1.0, 0.5, 1.05)] * 5,
+        "pinch_index": [sample(0.17, 1.0, 1.05)] * 5, "pinch_middle": [sample(1.0, 0.48, 1.05)] * 5,
+        "fist": [sample(0.3, 0.3, 0.9, reach=0.9)] * 5,
+    }
+    prof = compute_profile(samples)
+    assert prof["pinch_enter"] <= 0.40 and prof["pinch_exit"] <= 0.55
+    assert prof["pinch_enter_middle"] <= 0.50 and prof["pinch_exit_middle"] <= 0.65
+    assert prof["pinch_enter"] < prof["pinch_exit"]
 
 
 def test_gesture_calibration_builds_profile(engine):

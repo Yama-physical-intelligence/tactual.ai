@@ -39,7 +39,6 @@ class GestureEngine:
         self.calibrator: Calibrator | None = None
         self.gesture_calibrator: GestureCalibrator | None = None
         self.then_calibrate_screen = False  # first-run wizard: gestures, then screen corners
-        self._cal_pinched = False
         self._last_tap_t = -math.inf
         self._reset_tracking()
 
@@ -91,6 +90,11 @@ class GestureEngine:
         return self.pose.value
 
     @property
+    def setup_progress(self) -> float:
+        cal = self.gesture_calibrator or self.calibrator
+        return cal.progress if cal else 0.0
+
+    @property
     def prompt(self) -> str | None:
         """Instruction to show the user during setup, else None."""
         if self.gesture_calibrator:
@@ -115,7 +119,7 @@ class GestureEngine:
         self.anchor = self._anchor_point(hand)
 
         if self.calibrator:
-            return self._calibrate(hand)
+            return self._calibrate(hand, t)
 
         out: list[Action] = []
         if self.enabled:
@@ -132,7 +136,7 @@ class GestureEngine:
             self._track(hand, t)
         out += self._pinch_actions(edge, t)
         if pose is Pose.POINTER:
-            out += self._move()
+            out += self._move(t)
         out += self._swipe(hand, pose, t)
         return out
 
@@ -145,7 +149,6 @@ class GestureEngine:
     def start_calibration(self) -> list[Action]:
         out = self._release()
         self.calibrator = Calibrator()
-        self._cal_pinched = True  # require an open hand before the first capture
         out.append(self._event("calibration started"))
         return out
 
@@ -222,7 +225,10 @@ class GestureEngine:
             return self._pinch_held(t) if self._pinch == "left" else []
         phase, kind = edge
         if kind == "right":
-            return [Click("right"), self._event("right click")] if phase == "start" else []
+            if phase == "start":
+                self._pinch_t0 = t
+                return [Click("right"), self._event("right click")]
+            return []
         if phase == "start":
             self._pinch_t0, self._pinch_mode, self._pinch_origin = t, "pending", self._raw_pos
             self._pinch_is_second = t - self._last_tap_t < self.s.double_click_s
@@ -298,9 +304,13 @@ class GestureEngine:
         sx, sy = self._raw_pos = self.mapper.map(*self._anchor_point(hand))
         self._pos = (self._fx(sx, t), self._fy(sy, t))
 
-    def _move(self) -> list[Action]:
-        if self._pos is None or (self._pinch and not self._dragging):
-            return []  # steady click: the cursor holds still while pinched (unless dragging)
+    def _move(self, t: float) -> list[Action]:
+        # Steady click: hold the cursor still while left-pinched (unless dragging), and only
+        # briefly for a right-click so a lingering middle pinch can never freeze the cursor.
+        frozen = (self._pinch == "left" and not self._dragging) or (
+            self._pinch == "right" and t - self._pinch_t0 < 0.4)
+        if self._pos is None or frozen:
+            return []
         fx, fy = self._pos
         if self.cursor and math.hypot(fx - self.cursor[0], fy - self.cursor[1]) < self.s.move_deadzone_px:
             return []
@@ -377,27 +387,20 @@ class GestureEngine:
 
     # ------------------------------------------------------------- calibration
 
-    def _calibrate(self, hand: Hand) -> list[Action]:
-        r = hand.pinch_ratio(INDEX_TIP)
-        started = False
-        if self._cal_pinched:
-            self._cal_pinched = r < self.s.pinch_exit
-        elif r < self.s.pinch_enter:
-            self._cal_pinched = started = True
-        if not started:
-            return []
-        self.calibrator.capture(self.anchor)
+    def _calibrate(self, hand: Hand, t: float) -> list[Action]:
+        self.calibrator.feed(self.anchor, t)
         if not self.calibrator.done:
-            return [self._event(f"corner {len(self.calibrator.points)}/4 captured")]
-        points, self.calibrator = self.calibrator.points, None
+            return []
+        corners, self.calibrator = self.calibrator.corners(), None
         try:
-            self.mapper.set_corners(points)
+            self.mapper.set_corners(corners)
         except ValueError:
-            return [self._event("calibration failed (corners too close) - press c to retry")]
+            return [self._event("screen setup failed - press c to retry")]
         self.mapper.save(self.s.calibration_path)
         self._fx.reset()
         self._fy.reset()
-        return [self._event("calibration saved")]
+        self._need_release = True
+        return [self._event("screen setup saved")]
 
     def _calibrate_gestures(self, hands: list[Hand], t: float) -> list[Action]:
         cal = self.gesture_calibrator

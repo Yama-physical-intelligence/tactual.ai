@@ -5,11 +5,10 @@ import numpy as np
 
 from .gestures import GestureEngine
 from .hand import CONNECTIONS, Hand
-from .mapping import CORNER_NAMES
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 GREEN, ORANGE, RED, CYAN, WHITE, GREY = (90, 220, 90), (40, 140, 255), (70, 70, 230), (230, 200, 60), (255, 255, 255), (150, 150, 150)
-HELP = "q quit | p pause | g gesture setup | c screen corners | esc cancel"
+HELP = "q quit | p pause | g gesture setup | c screen setup | esc cancel"
 
 
 def _text(img, s, org, scale=0.55, color=WHITE, thick=1):
@@ -51,12 +50,11 @@ def draw(frame: np.ndarray, engine: GestureEngine, hands: list[Hand], fps: float
         _text(frame, gc.prompt, (12, h // 2), 0.6, ORANGE, 2)
         cv2.rectangle(frame, (12, h // 2 + 14), (12 + int((w - 24) * gc.progress), h // 2 + 20), ORANGE, -1)
     if engine.calibrator:
-        n = len(engine.calibrator.points)
-        corner = ((0, 0), (w, 0), (w, h), (0, h))[n]
-        cv2.circle(frame, corner, 40, ORANGE, 4, cv2.LINE_AA)
-        for p in engine.calibrator.points:
-            cv2.circle(frame, px(p), 6, ORANGE, -1, cv2.LINE_AA)
-        _text(frame, engine.calibrator.prompt, (12, h // 2), 0.6, ORANGE, 2)
-        _text(frame, f"target: {CORNER_NAMES[n]} of your screen", (12, h // 2 + 26), 0.5)
+        cal = engine.calibrator
+        if len(cal.samples) >= 5:
+            box = np.int32([px(c) for c in cal.corners()])
+            cv2.polylines(frame, [box], True, ORANGE, 2, cv2.LINE_AA)
+        _text(frame, "Sweep your hand over the area to use", (12, h // 2), 0.6, ORANGE, 2)
+        cv2.rectangle(frame, (12, h // 2 + 14), (12 + int((w - 24) * cal.progress), h // 2 + 20), ORANGE, -1)
 
     _text(frame, HELP, (12, h - 12), 0.45, GREY)
