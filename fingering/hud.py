@@ -16,7 +16,8 @@ def _text(img, s, org, scale=0.55, color=WHITE, thick=1):
     cv2.putText(img, s, org, FONT, scale, color, thick, cv2.LINE_AA)
 
 
-def draw(frame: np.ndarray, engine: GestureEngine, hands: list[Hand], fps: float, infer_ms: float) -> None:
+def draw(frame: np.ndarray, engine: GestureEngine, hands: list[Hand], fps: float, infer_ms: float,
+         two_hands: bool = False) -> None:
     h, w = frame.shape[:2]
     px = lambda p: (int(p[0] * w), int(p[1] * h))  # noqa: E731
 
@@ -37,7 +38,8 @@ def draw(frame: np.ndarray, engine: GestureEngine, hands: list[Hand], fps: float
     state_color = RED if not engine.enabled else GREEN
     _text(frame, "ACTIVE" if engine.enabled else "PAUSED", (12, 28), 0.8, state_color, 2)
     _text(frame, f"mode: {engine.mode}", (12, 54))
-    _text(frame, f"{fps:4.0f} fps   model {infer_ms:4.1f} ms", (12, 76), 0.5, GREY)
+    _text(frame, f"{fps:4.0f} fps   model {infer_ms:4.1f} ms   {'2 hands' if two_hands else '1 hand'}",
+          (12, 76), 0.5, GREY)
     if engine.last_event:
         _text(frame, engine.last_event, (12, 100), 0.6, ORANGE)
 

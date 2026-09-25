@@ -1,4 +1,8 @@
-from dataclasses import dataclass, field
+"""All tunable settings. Override any of them with a JSON file: ./run.sh --config my_settings.json
+e.g. {"natural_scroll": false, "dial_gain": 20, "primary_hand": "Left"}"""
+
+import json
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -11,7 +15,8 @@ class Settings:
     frame_width: int = 640
     frame_height: int = 480
     camera_fps: int = 60
-    max_hands: int = 1  # 2 enables two-hand zoom but re-runs the palm detector while one hand is visible
+    # "auto": track 1 hand, switch to 2 when a second hand appears (zoom). "one": fastest, no zoom.
+    hands_mode: str = "auto"
     primary_hand: str = "Right"
     model_path: Path = field(default_factory=lambda: PROJECT_ROOT / "models" / "hand_landmarker.task")
     calibration_path: Path = field(default_factory=lambda: PROJECT_ROOT / "calibration.json")
@@ -63,3 +68,23 @@ class Settings:
     # Pause toggle (fist hold) and hand-lost handling
     fist_toggle_s: float = 1.0
     hand_lost_s: float = 0.25
+
+
+def load_settings(path: Path | None = None) -> Settings:
+    """Defaults, overridden by the fields present in a JSON file (unknown keys are an error)."""
+    s = Settings()
+    if path is None:
+        return s
+    overrides = json.loads(Path(path).read_text())
+    known = {f.name: f for f in fields(Settings)}
+    unknown = set(overrides) - set(known)
+    if unknown:
+        raise ValueError(f"unknown settings in {path}: {', '.join(sorted(unknown))}")
+    for key, value in overrides.items():
+        current = getattr(s, key)
+        if isinstance(current, Path):
+            value = Path(value).expanduser()
+        elif isinstance(current, tuple):
+            value = tuple(value)
+        setattr(s, key, value)
+    return s

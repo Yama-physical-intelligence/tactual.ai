@@ -26,6 +26,7 @@ class _HandView(AppKit.NSView):
             self.message = None
             self.progress = 0.0
             self.cursor = None
+            self.others = None
         return self
 
     def isFlipped(self):  # top-left origin, like CoreGraphics screen coords
@@ -36,28 +37,16 @@ class _HandView(AppKit.NSView):
         AppKit.NSRectFill(rect)
         if self.message:
             self._draw_message()
-        pts = self.points
-        if not pts:
+        if not self.points:
             return
         tint = {
             "paused": (0.6, 0.6, 0.6, 0.18),
             "pinch": (1.0, 0.55, 0.25, 0.45),
             "active": (1.0, 1.0, 1.0, 0.28),
         }[self.state]
-        line = _rgba(*tint)
-        shadow = _rgba(0, 0, 0, tint[3] * 0.6)
-
-        path = AppKit.NSBezierPath.bezierPath()
-        for a, b in CONNECTIONS:
-            path.moveToPoint_(NSPoint(*pts[a]))
-            path.lineToPoint_(NSPoint(*pts[b]))
-        path.setLineCapStyle_(AppKit.NSLineCapStyleRound)
-        path.setLineWidth_(4.0)
-        shadow.set()
-        path.stroke()
-        path.setLineWidth_(2.0)
-        line.set()
-        path.stroke()
+        for other in self.others or ():  # second hand (e.g. during two-hand zoom)
+            self._draw_hand(other, tint)
+        self._draw_hand(self.points, tint)
 
         if self.cursor:  # precise aim point: where the click lands
             x, y = self.cursor
@@ -66,15 +55,25 @@ class _HandView(AppKit.NSView):
             _rgba(*tint[:3], min(tint[3] * 2.5, 0.9)).set()
             ring.stroke()
             AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x - 2, y - 2, 4, 4)).fill()
-            line.set()
 
+    def _draw_hand(self, pts, tint):
+        path = AppKit.NSBezierPath.bezierPath()
+        for a, b in CONNECTIONS:
+            path.moveToPoint_(NSPoint(*pts[a]))
+            path.lineToPoint_(NSPoint(*pts[b]))
+        path.setLineCapStyle_(AppKit.NSLineCapStyleRound)
+        path.setLineWidth_(4.0)
+        _rgba(0, 0, 0, tint[3] * 0.6).set()
+        path.stroke()
+        path.setLineWidth_(2.0)
+        _rgba(*tint).set()
+        path.stroke()
         for i in _TIPS:
             r = 7.0 if i in (THUMB_TIP, INDEX_TIP) else 4.5
             if self.state == "pinch" and i in (THUMB_TIP, INDEX_TIP, MIDDLE_TIP):
                 r += 2
             x, y = pts[i]
             AppKit.NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x - r, y - r, 2 * r, 2 * r)).fill()
-
 
     def _draw_message(self):
         """Setup instruction pill, bottom-center of the screen."""
@@ -119,7 +118,7 @@ class HandOverlay:
         self._smoothed = None
 
     def update(self, screen_points, state: str, message: str | None = None, progress: float = 0.0,
-               cursor=None) -> None:
+               cursor=None, others=None) -> None:
         """screen_points: 21 (x, y) in screen pixels, or None to hide."""
         if screen_points is None:
             self._smoothed = None
@@ -134,6 +133,7 @@ class HandOverlay:
         self._view.state = state
         self._view.message = message
         self._view.progress = progress
+        self._view.others = others if screen_points else None
         self._view.cursor = cursor if screen_points else None
         self._view.setNeedsDisplay_(True)
         self.pump()
