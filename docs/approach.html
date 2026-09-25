@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fingering — Approach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f6f3; --surface:#ffffff; --ink:#1b1b1f; --muted:#62626b; --line:#e4e2dc;
+  --accent:#e2542f; --accent-soft:#fbe6df; --ok:#1f8a5b; --ok-soft:#ddf2e8; --warn:#b7791f; --warn-soft:#fbf0d9;
+  --blue:#2f6fe2; --blue-soft:#e0eafc; --code:#f1efe9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121215; --surface:#1b1b20; --ink:#ecebe7; --muted:#9d9ca5; --line:#2c2c33;
+    --accent:#ff7550; --accent-soft:#3a2119; --ok:#4cc38a; --ok-soft:#15301f; --warn:#e3a846; --warn-soft:#352914;
+    --blue:#6c9dff; --blue-soft:#18233a; --code:#24242b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121215; --surface:#1b1b20; --ink:#ecebe7; --muted:#9d9ca5; --line:#2c2c33;
+  --accent:#ff7550; --accent-soft:#3a2119; --ok:#4cc38a; --ok-soft:#15301f; --warn:#e3a846; --warn-soft:#352914;
+  --blue:#6c9dff; --blue-soft:#18233a; --code:#24242b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:56px 16px 96px}
+header .eyebrow{font:500 13px/1 "JetBrains Mono",monospace;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+h1{font-size:clamp(34px,5vw,52px);line-height:1.08;letter-spacing:-.02em;margin:14px 0 18px;font-weight:700}
+h2{font-size:26px;letter-spacing:-.01em;margin:64px 0 8px}
+h3{font-size:17px;margin:0 0 6px}
+.lede{font-size:19px;color:var(--muted);max-width:760px}
+.sub{color:var(--muted);margin:0 0 22px;max-width:760px}
+code,.mono{font-family:"JetBrains Mono",monospace;font-size:.88em}
+code{background:var(--code);padding:1px 6px;border-radius:5px}
+.tldr{margin-top:32px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:22px 24px}
+.tldr ul{margin:8px 0 0;padding-left:20px}.tldr li{margin:6px 0}
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.stat{font:600 34px/1 Inter;letter-spacing:-.02em}
+.stat small{font-size:15px;color:var(--muted);font-weight:500}
+.tag{display:inline-block;font:500 12px/1 "JetBrains Mono",monospace;padding:5px 8px;border-radius:6px;margin:2px 4px 2px 0}
+.t-ok{background:var(--ok-soft);color:var(--ok)}.t-warn{background:var(--warn-soft);color:var(--warn)}
+.t-acc{background:var(--accent-soft);color:var(--accent)}.t-blue{background:var(--blue-soft);color:var(--blue)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:0}
+td a{color:var(--blue);text-decoration:none}td a:hover{text-decoration:underline}
+/* pipeline */
+.pipe{display:flex;gap:0;align-items:stretch;overflow-x:auto;padding:4px 0 8px}
+.stage{flex:1 0 150px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;position:relative;margin-right:26px}
+.stage:last-child{margin-right:0}
+.stage:not(:last-child)::after{content:"→";position:absolute;right:-21px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px}
+.stage .n{font:500 11px/1 "JetBrains Mono",monospace;color:var(--accent)}
+.stage h3{margin:6px 0 4px;font-size:15px}
+.stage p{margin:0;font-size:13px;color:var(--muted);line-height:1.45}
+.stage .ms{margin-top:10px;font:500 12px/1 "JetBrains Mono",monospace;color:var(--ink)}
+/* latency bar */
+.bar{display:flex;height:40px;border-radius:10px;overflow:hidden;border:1px solid var(--line);margin:14px 0 8px}
+.bar div{display:flex;align-items:center;justify-content:center;font:500 12px/1.1 "JetBrains Mono",monospace;color:#fff;white-space:nowrap;overflow:hidden;padding:0 4px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.bench{display:grid;grid-template-columns:minmax(150px,260px) 1fr 72px;gap:10px 14px;align-items:center;font-size:14px}
+.bench .track{height:14px;background:var(--code);border-radius:7px;overflow:hidden}
+.bench .fill{height:100%;border-radius:7px}
+.bench .v{font-family:"JetBrains Mono",monospace;font-size:13px;text-align:right}
+.phase{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:16px 0;border-top:1px solid var(--line)}
+.phase:first-of-type{border-top:0}
+.phase .when{font:600 13px/1.4 "JetBrains Mono",monospace;color:var(--accent)}
+.phase ul{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:15px}
+.sources{font-size:14px;color:var(--muted)}.sources a{color:var(--blue)}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+@media (max-width:640px){.phase{grid-template-columns:1fr;gap:4px}.bench{grid-template-columns:1fr 60px}.bench .track{grid-column:1/-1;order:3}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Fingering · research &amp; proposed approach · Sep 2026</div>
+  <h1>Control your computer with your hand, using only a webcam, running entirely on-device.</h1>
+  <p class="lede">An open-source, on-device system that turns webcam hand tracking into OS actions: move, click, drag, scroll, zoom and switch desktops. This page covers what already exists, what we measured on this machine, and how we'll build something faster and more reliable than current projects.</p>
+</header>
+
+<div class="tldr">
+  <h3>Summary</h3>
+  <ul>
+    <li><b>This has been done many times, but not done well.</b> GitHub has dozens of "virtual mouse" repos, almost all the same pattern: <code>MediaPipe + OpenCV + PyAutoGUI</code>. Few have calibration, tests, false-trigger protection or low-latency OS injection. That gap is where we can stand out.</li>
+    <li><b>Tracker:</b> <b>MediaPipe Hand Landmarker</b> (Apache-2.0, cross-platform, 21 landmarks), used behind a pluggable interface so we can add an <b>Apple Vision</b> backend on macOS.</li>
+    <li><b>Measured on this M1 Pro:</b> <b>11.9 ms</b> median per frame for one hand. Inference isn't the bottleneck; the camera is. Realistic end-to-end latency from moving your hand to the cursor moving is <b>≈45–70 ms</b>, about the same as a Bluetooth mouse plus a 30 Hz display.</li>
+    <li><b>Keep it fast:</b> keep the tracker in VIDEO/tracking mode (never re-detect every frame), capture at 60 fps, smooth with a <b>1€ filter</b> (not a moving average), and post events directly through <b>native OS APIs</b> (Quartz <code>CGEventPost</code>), not PyAutoGUI, whose default 100 ms pause after every call is fatal.</li>
+    <li><b>Reliability is what sets us apart:</b> an explicit gesture state machine with hysteresis, clutch/arm gestures, per-user calibration, and a <b>replay test suite</b> of recorded hand sessions that must produce zero actions when you're just talking with your hands.</li>
+  </ul>
+</div>
+
+<!-- ============ PRIOR ART ============ -->
+<h2>1 · Existing projects</h2>
+<p class="sub">We looked at open-source projects, research systems and commercial products. The pattern repeats: the tracking model is solved, but the interaction layer (turning noisy landmarks into intended actions) is where most projects break down.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Project</th><th>Stack</th><th>What's good</th><th>Gaps</th></tr></thead>
+<tbody>
+<tr><td><a href="https://github.com/Bhavyashah20/gesture-control">gesture-control</a> <span class="tag t-ok">closest to us</span></td><td>Python · MediaPipe · macOS Accessibility · AppleScript</td><td>Pure pipeline (features → gating → state machine → filter → actuator). Clutch gesture. <b>Replay tests</b> assert silence on "talking hands" recordings. Apache-2.0.</td><td>Mac-only, primary display only, uses AppleScript for Spaces (slow). Early stage, 0 stars.</td></tr>
+<tr><td><a href="https://github.com/Viral-Doshi/Gesture-Controlled-Virtual-Mouse">Gesture-Controlled-Virtual-Mouse</a></td><td>Python · MediaPipe · PyAutoGUI · voice</td><td>Popular, lots of gestures (click, drag, scroll, volume, brightness).</td><td>Windows-focused, PyAutoGUI latency, no calibration, frequent accidental clicks.</td></tr>
+<tr><td><a href="https://github.com/jorisparet/hamoco">hamoco</a></td><td>Python · MediaPipe · custom classifier</td><td>Trains a small NN on landmark poses, so gestures can be user-defined.</td><td>Linux-oriented, classifier-only (no temporal gestures like swipe), not maintained.</td></tr>
+<tr><td><a href="https://github.com/KwaBOw7/gesture-mouse">GestureMouse</a> · <a href="https://github.com/koushik-mondal6/Hand-gesture-controller">Hand-gesture-controller</a> · <a href="https://github.com/whitehatboy005/Virtual-Mouse">Virtual-Mouse</a> · <a href="https://github.com/topics/hand-gesture-mouse-controller">+dozens more</a></td><td>MediaPipe · OpenCV · PyAutoGUI</td><td>Show that the basic idea works; cover common gestures (zoom, volume, copy/paste).</td><td>Nearly the same code in each: fixed thresholds, raw fingertip as cursor (drifts during clicks), no tests.</td></tr>
+<tr><td><a href="https://github.com/asuramaya/gestalt/blob/main/docs/POINTING.md">gestalt</a> (head-pointer)</td><td>Python · OpenCV · published HCI techniques</td><td>A strong design reference: 1€ filter, <b>Steady Clicks</b> (freeze cursor during click), <b>DynaSpot</b> target magnetism, endpoint prediction, silent re-calibration from confirmed clicks.</td><td>Head tracking, not hands. Linux/X11.</td></tr>
+<tr><td><a href="https://blog.google/innovation-and-ai/products/google-project-gameface/">Google Project Gameface</a></td><td>MediaPipe Face + blendshapes</td><td>Open-source, accessibility-grade product from Google; configurable gesture-to-action bindings.</td><td>Face/head only, no hand control.</td></tr>
+<tr><td>Ultraleap / Leap Motion</td><td>Dedicated IR hardware</td><td>Best-in-class precision and latency.</td><td>Needs extra hardware and a proprietary SDK. We want webcam-only.</td></tr>
+<tr><td>Apple Vision Pro (look + pinch)</td><td>Custom sensors + eye tracking</td><td>Sets what users expect: <b>pinch = click</b>, small relaxed motions, no raised arm.</td><td>Closed platform. Its interaction model is worth copying.</td></tr>
+</tbody></table></div>
+
+<div class="grid g3" style="margin-top:14px">
+  <div class="card"><h3>Mistake #1: raw fingertip as cursor</h3><p>Pinching moves the index tip, so every click lands a few pixels off. Fix: anchor the cursor to a stable joint (index MCP / palm) and freeze it while a click is being confirmed.</p></div>
+  <div class="card"><h3>Mistake #2: PyAutoGUI</h3><p>It sleeps 100 ms after each call by default (<code>PAUSE=0.1</code>), and on macOS it can't send real double-clicks or reliable Spaces shortcuts. Native event APIs avoid both problems.</p></div>
+  <div class="card"><h3>Mistake #3: always listening</h3><p>If every hand movement is treated as a command, the system fires whenever you scratch your head. Fix: arm/clutch gestures, pose debouncing, and replay tests that require silence.</p></div>
+</div>
+
+<!-- ============ TOOLS ============ -->
+<h2>2 · Tool choices</h2>
+<p class="sub">Everything runs locally: no cloud, no network after the first model download, and no video leaves the machine.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Layer</th><th>Choice</th><th>Why</th><th>Alternatives considered</th></tr></thead>
+<tbody>
+<tr><td>Hand tracking</td><td><b>MediaPipe Hand Landmarker</b> <code>0.10.21</code><br><span class="tag t-blue">Apache-2.0</span></td><td>Cross-platform, 21 3D landmarks + handedness, tracking mode skips the palm detector between frames. Largest community.</td><td><b>Apple Vision</b> <code>VNDetectHumanHandPoseRequest</code>: runs on the Neural Engine, faster with two hands, macOS only, so it will be a second backend. MediaPipe <code>1.0.x</code> crashes on macOS (Metal service check), so we pin 0.10.21.</td></tr>
+<tr><td>Camera capture</td><td>OpenCV <code>VideoCapture</code> (AVFoundation)</td><td>Simple, cross-platform. Request 60 fps + small buffer so frames are never queued.</td><td>Native AVCaptureSession (later, for guaranteed lowest-latency capture).</td></tr>
+<tr><td>Smoothing</td><td><b>1€ filter</b> (Casiez et al., CHI '12)</td><td>Adaptive cutoff: heavy smoothing when still (no jitter), light when fast (no lag). The standard choice in HCI.</td><td>Moving average (laggy), Kalman (tuning-heavy; maybe as a second stage).</td></tr>
+<tr><td>Gesture logic</td><td>Hand-written <b>state machine</b> over geometric features, all distances normalized by hand size</td><td>Deterministic, explainable, sub-millisecond, and easy to unit-test. Hysteresis on every threshold.</td><td>Learned classifier (hamoco-style) as a later plugin for custom gestures.</td></tr>
+<tr><td>OS actions</td><td><b>Quartz <code>CGEventPost</code></b> (macOS) → <code>SendInput</code> (Windows) → <code>uinput</code> (Linux)</td><td>Under 1 ms per event, real click-state (double-click), drag events, pixel-precise scrolling, Mission Control/Spaces keys.</td><td>PyAutoGUI / pynput (slower, fewer features), AppleScript (≈100 ms).</td></tr>
+<tr><td>Language</td><td>Python 3.11 for v1</td><td>Fastest to iterate; inference is native code anyway. The pipeline is pure functions, so a Swift/Rust port later is straightforward.</td><td>Swift menu-bar app (v2 on macOS for packaging and permissions UX).</td></tr>
+</tbody></table></div>
+
+<!-- ============ MEASURED ============ -->
+<h2>3 · Measured on this machine</h2>
+<p class="sub">Apple M1 Pro, 640×480 input, 150 runs after warm-up, Python bindings. VIDEO mode is the steady-state path while a hand is being tracked.</p>
+
+<div class="card">
+  <div class="bench">
+    <div>MediaPipe · tracking · 1 hand</div><div class="track"><div class="fill" style="width:30%;background:var(--ok)"></div></div><div class="v">11.9 ms</div>
+    <div>Apple Vision · 2 hands</div><div class="track"><div class="fill" style="width:40%;background:var(--blue)"></div></div><div class="v">16.0 ms</div>
+    <div>MediaPipe · tracking · 2 hands</div><div class="track"><div class="fill" style="width:59%;background:var(--warn)"></div></div><div class="v">23.5 ms</div>
+    <div>MediaPipe · re-detect every frame</div><div class="track"><div class="fill" style="width:100%;background:var(--accent)"></div></div><div class="v">39.8 ms</div>
+  </div>
+  <p class="note">Median values. p95: 16 / 30 / 70 / 138 ms. Takeaways: <b>(1)</b> always use tracking mode; <b>(2)</b> run with one hand by default and allow two only when needed (zoom); <b>(3)</b> Apple Vision is the better two-hand backend on Mac.</p>
+</div>
+
+<h3 style="margin-top:28px">Latency budget: hand moves → cursor moves</h3>
+<div class="bar">
+  <div style="flex:17;background:#7a7a86">camera 17–33</div>
+  <div style="flex:12;background:var(--ok)">infer 12</div>
+  <div style="flex:1.2;background:var(--blue)" title="features + gestures + filter">1</div>
+  <div style="flex:.6;background:var(--accent)" title="OS event"></div>
+  <div style="flex:16;background:#b4b4be;color:#222">display 8–16</div>
+</div>
+<div class="legend">
+  <span><i style="background:#7a7a86"></i>camera frame interval (60 → 30 fps)</span>
+  <span><i style="background:var(--ok)"></i>hand model</span>
+  <span><i style="background:var(--blue)"></i>features + state machine + 1€ filter (&lt;1 ms)</span>
+  <span><i style="background:var(--accent)"></i>CGEventPost (&lt;1 ms)</span>
+  <span><i style="background:#b4b4be"></i>display refresh</span>
+</div>
+<p class="note">Total ≈ <b>45–70 ms</b>. The part we control (model + logic + OS event) is about 13 ms. To get lower, we need faster capture (60/120 fps cameras), not faster code. We'll also add optional <b>velocity-based prediction</b> of the cursor to cover roughly one frame of latency.</p>
+
+<!-- ============ ARCHITECTURE ============ -->
+<h2>4 · Architecture</h2>
+<p class="sub">A one-way pipeline made of pure, testable stages. Only the last stage touches the OS, so everything else can run in tests from recorded sessions with no camera attached.</p>
+
+<div class="pipe">
+  <div class="stage"><div class="n">01</div><h3>Capture</h3><p>Webcam frame, mirrored. Newest frame only, never a queue.</p><div class="ms">~17–33 ms</div></div>
+  <div class="stage"><div class="n">02</div><h3>Tracker</h3><p><code>HandTracker</code> interface: MediaPipe, or Apple Vision on Mac. Outputs 21 landmarks + handedness.</p><div class="ms">~12 ms</div></div>
+  <div class="stage"><div class="n">03</div><h3>Features</h3><p>Fingers extended, pinch ratios, palm center, hand scale. Scale-invariant.</p><div class="ms">&lt;0.1 ms</div></div>
+  <div class="stage"><div class="n">04</div><h3>Gesture engine</h3><p>Pose debounce → state machine (pointer / pinch / drag / scroll / swipe / zoom / paused). Emits <b>Actions</b>.</p><div class="ms">&lt;0.2 ms</div></div>
+  <div class="stage"><div class="n">05</div><h3>Mapping</h3><p>Calibrated homography from camera space to screen, then the 1€ filter.</p><div class="ms">&lt;0.1 ms</div></div>
+  <div class="stage"><div class="n">06</div><h3>Actuator</h3><p>Native OS events: Quartz / SendInput / uinput. <code>--dry-run</code> logs only.</p><div class="ms">&lt;1 ms</div></div>
+</div>
+
+<div class="grid g2" style="margin-top:14px">
+  <div class="card"><h3>Actions are plain data</h3><p><code>MoveCursor</code>, <code>Click(button, count)</code>, <code>MouseButton(down/up)</code>, <code>Scroll</code>, <code>Shortcut("space_right")</code>. New features are new gesture rules that emit these actions, and the OS layer stays untouched. Later, gesture-to-action bindings can live in a user config file, like Gameface does.</p></div>
+  <div class="card"><h3>Record and replay</h3><p>A <code>--record</code> flag writes landmarks + timestamps to JSONL. Tests replay the recordings through the engine and check the exact actions produced. "Talking hands" and "reaching past the laptop" recordings must produce <b>zero</b> actions.</p></div>
+</div>
+
+<!-- ============ GESTURES ============ -->
+<h2>5 · Gesture set for v1</h2>
+<p class="sub">Borrowed from the Vision Pro and trackpad conventions people already know. Every entry lists what stops it from firing by accident.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Gesture</th><th>Action</th><th>Guard against misfires</th></tr></thead>
+<tbody>
+<tr><td>☝️ Point (index up)</td><td>Move cursor</td><td>Cursor anchored to the index knuckle (MCP), so it stays put while you pinch. 1€ filter + deadzone.</td></tr>
+<tr><td>🤏 Quick pinch, thumb + index</td><td>Left click</td><td>Enter at 0.28, release at 0.42 × hand size (hysteresis). Cursor frozen while the click is confirmed (Steady Clicks).</td></tr>
+<tr><td>🤏🤏 Two quick pinches</td><td>Double-click</td><td>Sent as a real <code>clickState=2</code> event, so macOS registers it as a double-click.</td></tr>
+<tr><td>🤏⏱ Pinch and hold (&gt;300 ms)</td><td>Drag, then release to drop</td><td>A watchdog releases the button if the hand leaves the frame, so the mouse button never gets stuck.</td></tr>
+<tr><td>🤌 Pinch thumb + middle</td><td>Right click</td><td>Uses whichever finger is closest to the thumb, so it doesn't collide with a left click.</td></tr>
+<tr><td>✌️ Two fingers up, move vertically</td><td>Scroll (natural direction)</td><td>Pixel-precise scroll events. A deadzone plus accumulator removes jitter.</td></tr>
+<tr><td>🖐 Open palm, swipe left/right</td><td>Switch desktop (Space)</td><td>Needs ≥18% of frame width within 300 ms, mostly horizontal, then a 0.9 s cooldown. The cursor is frozen while the palm is open.</td></tr>
+<tr><td>🖐 Open palm, swipe up / down</td><td>Mission Control / App windows</td><td>Same rules as the horizontal swipe.</td></tr>
+<tr><td>🤏 + 🤏 Both hands pinch, spread / close</td><td>Zoom in / out (expand)</td><td>Only when both hands pinch. Steps every 25% change in distance. Cancels any pending single-hand click.</td></tr>
+<tr><td>✊ Hold a fist for 1 s</td><td>Pause / resume control</td><td>A progress ring appears on screen. You must open your hand before it can toggle again.</td></tr>
+</tbody></table></div>
+
+<!-- ============ CALIBRATION ============ -->
+<h2>6 · Calibration</h2>
+<div class="grid g2">
+  <div class="card"><h3>Explicit: 4-corner calibration (v1)</h3><p>Point at each screen corner in turn and pinch to confirm. We fit a <b>perspective homography</b> from that comfortable hand region to the full screen, so small, relaxed movements cover the whole display. It's saved per user, and a sensible default box works with no setup.</p></div>
+  <div class="card"><h3>Implicit: self-correcting (v2)</h3><p>Borrowed from gestalt: every confirmed click is a labelled data point. A recursive least-squares update with slow forgetting follows posture drift (leaning back, moving the laptop) with no need to recalibrate.</p></div>
+</div>
+
+<!-- ============ DIFFERENTIATORS ============ -->
+<h2>7 · What will make this better than existing projects</h2>
+<div class="grid g3">
+  <div class="card"><span class="tag t-acc">speed</span><h3>≈13 ms of our own latency</h3><p>Tracking mode, native events, no sleeps, newest-frame-only capture. Frame-time and latency are shown on screen.</p></div>
+  <div class="card"><span class="tag t-ok">trust</span><h3>Silent when not addressed</h3><p>Pause fist, hysteresis, debounce, and replay tests in CI that fail if idle hand movement triggers anything.</p></div>
+  <div class="card"><span class="tag t-blue">privacy</span><h3>100% on-device</h3><p>No network and no frames stored. Recordings contain landmarks only, never images.</p></div>
+  <div class="card"><span class="tag t-warn">precision</span><h3>Clicks land where you aim</h3><p>Stable-joint anchor, cursor frozen during a click, calibrated mapping; later, DynaSpot-style snapping to UI targets using the Accessibility tree.</p></div>
+  <div class="card"><span class="tag t-acc">extensible</span><h3>Plugin gestures</h3><p>Gestures are rules that emit plain Action data. Bindings will be configurable, and a learned classifier can be added for custom gestures.</p></div>
+  <div class="card"><span class="tag t-ok">portable</span><h3>Pluggable backends</h3><p>Tracker: MediaPipe / Apple Vision. Actuator: macOS / Windows / Linux. The core logic is shared.</p></div>
+</div>
+
+<!-- ============ ROADMAP ============ -->
+<h2>8 · Roadmap</h2>
+<div class="card">
+  <div class="phase"><div class="when">Phase 1<br>now</div><div><b>macOS MVP</b><ul><li>MediaPipe tracker, gesture engine, 1€ filter, 4-corner calibration, Quartz actuator</li><li>Move, click, double-click, drag, right-click, scroll, Space swipes, two-hand zoom, fist pause</li><li>Preview HUD with FPS and latency, <code>--dry-run</code>, unit tests on synthetic hands</li></ul></div></div>
+  <div class="phase"><div class="when">Phase 2</div><div><b>Reliability</b><ul><li><code>--record</code>/replay, "silence" recordings in CI</li><li>Apple Vision backend and a benchmark switch</li><li>Cursor prediction, implicit re-calibration, multi-monitor mapping</li></ul></div></div>
+  <div class="phase"><div class="when">Phase 3</div><div><b>Product</b><ul><li>Menu-bar app (no terminal), permissions onboarding, config UI for gesture bindings</li><li>Windows (<code>SendInput</code>) and Linux (<code>uinput</code>) actuators</li><li>Custom gestures via a small on-device classifier</li></ul></div></div>
+</div>
+
+<!-- ============ RISKS ============ -->
+<h2>9 · Risks and open questions</h2>
+<div class="grid g2">
+  <div class="card"><h3>Arm fatigue ("gorilla arm")</h3><p>Holding an arm up is tiring. Calibration lets you use small movements with your elbow resting on the desk. Relative/clutch mode is a v2 option.</p></div>
+  <div class="card"><h3>Lighting and background</h3><p>Low light increases camera exposure time, which adds latency and jitter. The HUD will warn when FPS drops.</p></div>
+  <div class="card"><h3>macOS permissions</h3><p>Needs Camera + Accessibility for the terminal (later, for the app). We check on startup and open the right settings pane.</p></div>
+  <div class="card"><h3>Dependency pinning</h3><p>MediaPipe 1.0.x crashes on macOS (verified here). We pin 0.10.21 and track upstream; the tracker interface keeps us from being locked in.</p></div>
+</div>
+
+<h2>Sources</h2>
+<div class="sources">
+<p>
+<a href="https://github.com/Bhavyashah20/gesture-control">Bhavyashah20/gesture-control</a> ·
+<a href="https://github.com/asuramaya/gestalt/blob/main/docs/POINTING.md">gestalt POINTING.md</a> ·
+<a href="https://github.com/jorisparet/hamoco">hamoco</a> ·
+<a href="https://github.com/Viral-Doshi/Gesture-Controlled-Virtual-Mouse">Gesture-Controlled-Virtual-Mouse</a> ·
+<a href="https://github.com/KwaBOw7/gesture-mouse">GestureMouse</a> ·
+<a href="https://github.com/koushik-mondal6/Hand-gesture-controller">Hand-gesture-controller</a> ·
+<a href="https://github.com/whitehatboy005/Virtual-Mouse">Virtual-Mouse</a> ·
+<a href="https://github.com/topics/hand-gesture-mouse-controller">GitHub topic: hand-gesture-mouse-controller</a> ·
+<a href="https://blog.google/innovation-and-ai/products/google-project-gameface/">Google Project Gameface</a> ·
+<a href="https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker">MediaPipe Hand Landmarker guide</a> ·
+<a href="https://developer.apple.com/videos/play/wwdc2020/10653/">WWDC20: Detect Body and Hand Pose with Vision</a> ·
+<a href="https://github.com/casiez/OneEuroFilter">1€ filter (Casiez)</a> ·
+<a href="https://chernando.com/blog/2023/07/23/hand-tracking-for-mouse-input.html">Hand Tracking for Mouse Input (blog)</a>
+</p>
+<p class="note">Benchmarks were run locally in this repo's venv (<code>mediapipe 0.10.21</code>, <code>pyobjc 12.2</code>, M1 Pro). Latency figures for the camera and display are typical values, not measurements.</p>
+</div>
+
+</div>
+</body>
+</html>
