@@ -5,3 +5,4 @@ __pycache__/
 models/
 calibration.json
 gesture_profile.json
+*.jsonl
